@@ -1,0 +1,14 @@
+version: "3.8"
+services:
+  webapp:
+    container_name: "wallet-webapp"
+    build: .
+    ports:
+      - "8080:8080"
+  postgres:
+    container_name: "wallet-postgres"
+    image: postgres:12.3-alpine
+    environment:
+      POSTGRES_USER: wallet
+      POSTGRES_PASSWORD: wallet
+      POSTGRES_DB: wallet
