@@ -1,12 +1,13 @@
 import datetime
 import decimal
+import typing
 import uuid
 
 import sqlalchemy
 from fastapi_users import models
 from fastapi_users.db import SQLAlchemyBaseUserTable
 from fastapi_users.db.sqlalchemy import GUID
-from pydantic import BaseModel, UUID4
+from pydantic import BaseModel, UUID4, validator
 from sqlalchemy import Column, DECIMAL, Integer, String, TIMESTAMP
 from sqlalchemy.ext.declarative import DeclarativeMeta, declarative_base
 
@@ -68,7 +69,6 @@ class UserDB(User, models.BaseUserDB):
 
 class Wallet(BaseModel):
     id: UUID4
-    user_id: UUID4
     name: str
     balance: decimal.Decimal
 
@@ -77,8 +77,26 @@ class WalletCreate(BaseModel):
     name: str
 
 
+class WalletDeposit(BaseModel):
+    value: decimal.Decimal
+
+    @validator('value')
+    def value_must_be_positive(cls, v: decimal.Decimal):
+        if v <= decimal.Decimal(0):
+            raise ValueError('Must be positive')
+        return v
+
+
+class WalletBalance(BaseModel):
+    balance: decimal.Decimal
+
+
 class WalletId(BaseModel):
     id: UUID4
+
+
+class WalletIdList(BaseModel):
+    ids: typing.List[UUID4]
 
 
 class Transaction(BaseModel):

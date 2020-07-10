@@ -1,4 +1,5 @@
 import decimal
+import typing
 import uuid
 
 import asyncpg
@@ -6,6 +7,7 @@ import databases
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.openapi.docs import get_swagger_ui_html
+from sqlalchemy import and_
 from starlette.responses import RedirectResponse
 from starlette.staticfiles import StaticFiles
 
@@ -38,7 +40,12 @@ async def root():
     return RedirectResponse('/docs')
 
 
-@app.post('/wallet/create', response_model=models.WalletId, responses={409: {'model': models.ErrorDetails}})
+@app.post(
+    '/wallet/create',
+    summary='Create wallet',
+    response_model=models.WalletId,
+    responses={409: {'model': models.ErrorDetails}},
+)
 async def create_wallet(
         wallet_create: models.WalletCreate,
         user: models.User = Depends(fastapi_users.get_current_user),
@@ -55,6 +62,97 @@ async def create_wallet(
         raise HTTPException(status_code=409, detail='Wallet with this name already exists')
     return models.WalletId(
         id=wallet_id,
+    )
+
+
+@app.get(
+    '/wallet',
+    summary='Get wallet id list',
+    response_model=models.WalletIdList,
+)
+async def get_wallets(user: models.User = Depends(fastapi_users.get_current_user)):
+    async with db.transaction():
+        wallets_ids = await db.fetch_all(
+            models.wallets.select(
+                models.wallets.c.user_id == user.id,
+            ).with_only_columns([
+                models.wallets.c.id,
+            ])
+        )
+        return models.WalletIdList(
+            ids=[x['id'] for x in wallets_ids]
+        )
+
+
+@app.get(
+    '/wallet/{wallet_id}',
+    summary='Get specific wallet',
+    response_model=models.Wallet,
+    responses={404: {'model': models.ErrorDetails}},
+)
+async def get_wallet(
+        wallet_id: uuid.UUID,
+        user: models.User = Depends(fastapi_users.get_current_user),
+):
+    async with db.transaction():
+        wallet = await db.fetch_one(
+            models.wallets.select(
+                and_(
+                    models.wallets.c.id == wallet_id,
+                    models.wallets.c.user_id == user.id
+                )
+            ).with_only_columns([
+                models.wallets.c.id,
+                models.wallets.c.name,
+                models.wallets.c.balance,
+            ])
+        )
+        if not wallet:
+            raise HTTPException(status_code=404, detail='Wallet does not exist or user does not own it')
+        return wallet
+
+
+@app.post(
+    '/wallet/{wallet_id}/deposit',
+    summary='Deposit funds to wallet',
+    response_model=models.WalletBalance,
+    responses={404: {'model': models.ErrorDetails}},
+)
+async def deposit_to_wallet(
+        wallet_id: uuid.UUID,
+        wallet_deposit: models.WalletDeposit,
+        user: models.User = Depends(fastapi_users.get_current_user),
+):
+    async with db.transaction():
+        wallet = bool(await db.fetch_val(
+            models.wallets.select(
+                and_(
+                    models.wallets.c.id == wallet_id,
+                    models.wallets.c.user_id == user.id
+                ),
+                for_update=True,
+            ).with_only_columns([
+                models.wallets.c.id,
+            ])
+        ))
+        if not wallet:
+            raise HTTPException(status_code=404, detail='Wallet does not exist or user does not own it')
+        await db.execute(
+            models.wallets.update(
+                models.wallets.c.id == wallet_id
+            ).values(
+                balance=models.wallets.c.balance + wallet_deposit.value
+            )
+        )
+        new_balance = await db.fetch_val(
+            models.wallets.select(
+                models.wallets.c.id == wallet_id,
+            ).with_only_columns([
+                models.wallets.c.balance,
+            ])
+        )
+    return models.WalletBalance(
+        balance=new_balance,
     )
 
 
