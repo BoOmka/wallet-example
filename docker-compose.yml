@@ -12,3 +12,5 @@ services:
       POSTGRES_USER: wallet
       POSTGRES_PASSWORD: wallet
       POSTGRES_DB: wallet
+    ports:
+      - "5432:5432"
