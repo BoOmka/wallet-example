@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import decimal
 import uuid
@@ -206,26 +207,28 @@ async def transfer(
         if not recipient_wallet:
             raise HTTPException(status_code=404, detail='Recipient wallet does not exist')
 
-        await db.execute(
-            models.wallets.update(
-                models.wallets.c.id == wallet_id
-            ).values(
-                balance=models.wallets.c.balance - wallet_transfer.value
-            )
+        await asyncio.gather(
+            db.execute(
+                models.wallets.update(
+                    models.wallets.c.id == wallet_id
+                ).values(
+                    balance=models.wallets.c.balance - wallet_transfer.value,
+                )
+            ),
+            db.execute(
+                models.wallets.update(
+                    models.wallets.c.id == recipient_wallet_id
+                ).values(
+                    balance=models.wallets.c.balance + wallet_transfer.value,
+                )
+            ),
+            db.execute(models.transactions.insert(values={
+                'sender_wallet_id': wallet_id,
+                'recipient_wallet_id': recipient_wallet_id,
+                'value': wallet_transfer.value,
+                'timestamp': now,
+            }))
         )
-        await db.execute(
-            models.wallets.update(
-                models.wallets.c.id == recipient_wallet_id
-            ).values(
-                balance=models.wallets.c.balance + wallet_transfer.value
-            )
-        )
-        await db.execute(models.transactions.insert(values={
-            'sender_wallet_id': wallet_id,
-            'recipient_wallet_id': recipient_wallet_id,
-            'value': wallet_transfer.value,
-            'timestamp': now
-        }))
         new_balance = await db.fetch_val(
             models.wallets.select(
                 models.wallets.c.id == wallet_id,
