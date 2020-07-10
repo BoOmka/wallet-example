@@ -1,5 +1,6 @@
 import datetime
 import decimal
+import uuid
 
 import sqlalchemy
 from fastapi_users import models
@@ -23,7 +24,7 @@ class UserTable(Base, SQLAlchemyBaseUserTable):
 class WalletTable(Base):
     __tablename__ = 'wallet'
 
-    id = Column(GUID, primary_key=True)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
     user_id = Column(GUID)
     name = Column(String)
     balance = Column(DECIMAL)
@@ -62,10 +63,18 @@ class UserDB(User, models.BaseUserDB):
 
 
 class Wallet(BaseModel):
-    id: int
+    id: UUID4
     user_id: UUID4
     name: str
     balance: decimal.Decimal
+
+
+class WalletCreate(BaseModel):
+    name: str
+
+
+class WalletId(BaseModel):
+    id: UUID4
 
 
 class Transaction(BaseModel):
