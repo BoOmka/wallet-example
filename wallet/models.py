@@ -33,8 +33,8 @@ class WalletTable(Base):
 
 class TransactionTable(Base):
     __tablename__ = 'transaction'
-    id = Column(Integer, primary_key=True)
-    sender_wallet_id = Column(GUID)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    sender_wallet_id = Column(GUID, nullable=True)
     recipient_wallet_id = Column(GUID)
     value = Column(DECIMAL)
     timestamp = Column(TIMESTAMP)

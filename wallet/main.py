@@ -1,5 +1,5 @@
+import datetime
 import decimal
-import typing
 import uuid
 
 import asyncpg
@@ -123,6 +123,7 @@ async def deposit_to_wallet(
         wallet_deposit: models.WalletDeposit,
         user: models.User = Depends(fastapi_users.get_current_user),
 ):
+    now = datetime.datetime.utcnow()
     async with db.transaction():
         wallet = bool(await db.fetch_val(
             models.wallets.select(
@@ -144,6 +145,11 @@ async def deposit_to_wallet(
                 balance=models.wallets.c.balance + wallet_deposit.value
             )
         )
+        await db.execute(models.transactions.insert(values={
+            'recipient_wallet_id': wallet_id,
+            'value': wallet_deposit.value,
+            'timestamp': now
+        }))
         new_balance = await db.fetch_val(
             models.wallets.select(
                 models.wallets.c.id == wallet_id,
