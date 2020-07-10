@@ -26,7 +26,7 @@ class WalletTable(Base):
 
     id = Column(GUID, primary_key=True, default=uuid.uuid4)
     user_id = Column(GUID)
-    name = Column(String)
+    name = Column(String, unique=True)
     balance = Column(DECIMAL)
 
 
@@ -46,6 +46,10 @@ transactions = TransactionTable.__table__
 
 
 # Pydantic models
+class ErrorDetails(BaseModel):
+    details: str
+
+
 class User(models.BaseUser):
     pass
 
