@@ -95,8 +95,13 @@ class WalletId(BaseModel):
     id: UUID4
 
 
-class WalletIdList(BaseModel):
-    ids: typing.List[UUID4]
+class WalletListItem(BaseModel):
+    id: UUID4
+    name: str
+
+
+class WalletList(BaseModel):
+    wallets: typing.List[WalletListItem]
 
 
 class Transaction(BaseModel):

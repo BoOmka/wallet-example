@@ -67,20 +67,21 @@ async def create_wallet(
 
 @app.get(
     '/wallet',
-    summary='Get wallet id list',
-    response_model=models.WalletIdList,
+    summary='Get wallet list',
+    response_model=models.WalletList,
 )
 async def get_wallets(user: models.User = Depends(fastapi_users.get_current_user)):
     async with db.transaction():
-        wallets_ids = await db.fetch_all(
+        wallets = await db.fetch_all(
             models.wallets.select(
                 models.wallets.c.user_id == user.id,
             ).with_only_columns([
                 models.wallets.c.id,
+                models.wallets.c.name,
             ])
         )
-        return models.WalletIdList(
-            ids=[x['id'] for x in wallets_ids]
+        return models.WalletList(
+            wallets=wallets
         )
 
 
