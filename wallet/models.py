@@ -86,6 +86,16 @@ class WalletDeposit(BaseModel):
             raise ValueError('Must be positive')
         return v
 
+    @validator('value')
+    def value_must_have_8_decimals(cls, v: decimal.Decimal):
+        if abs(v.as_tuple().exponent) > 8:
+            raise ValueError('Must have at most 8 decimal places')
+        return v
+
+
+class WalletTransfer(WalletDeposit):
+    pass
+
 
 class WalletBalance(BaseModel):
     balance: decimal.Decimal

@@ -163,6 +163,81 @@ async def deposit_to_wallet(
     )
 
 
+@app.post(
+    '/wallet/{wallet_id}/transfer-to/{recipient_wallet_id}',
+    summary='Transfer funds from one wallet to another',
+    response_model=models.WalletBalance,
+    responses={400: {'model': models.ErrorDetails}, 404: {'model': models.ErrorDetails}},
+)
+async def transfer(
+        wallet_id: uuid.UUID,
+        recipient_wallet_id: uuid.UUID,
+        wallet_transfer: models.WalletTransfer,
+        user: models.User = Depends(fastapi_users.get_current_user),
+):
+    now = datetime.datetime.utcnow()
+    async with db.transaction():
+        sender_wallet = await db.fetch_one(
+            models.wallets.select(
+                and_(
+                    models.wallets.c.id == wallet_id,
+                    models.wallets.c.user_id == user.id,
+                ),
+                for_update=True,
+            ).with_only_columns([
+                models.wallets.c.id,
+                models.wallets.c.balance,
+            ])
+        )
+        if not sender_wallet:
+            raise HTTPException(status_code=404, detail='Sender wallet does not exist or user does not own it')
+        if sender_wallet['balance'] < wallet_transfer.value:
+            raise HTTPException(status_code=400, detail='Insufficient funds')
+
+        recipient_wallet = await db.fetch_one(
+            models.wallets.select(
+                models.wallets.c.id == recipient_wallet_id,
+                for_update=True,
+            ).with_only_columns([
+                models.wallets.c.id,
+                models.wallets.c.balance,
+            ])
+        )
+        if not recipient_wallet:
+            raise HTTPException(status_code=404, detail='Recipient wallet does not exist')
+
+        await db.execute(
+            models.wallets.update(
+                models.wallets.c.id == wallet_id
+            ).values(
+                balance=models.wallets.c.balance - wallet_transfer.value
+            )
+        )
+        await db.execute(
+            models.wallets.update(
+                models.wallets.c.id == recipient_wallet_id
+            ).values(
+                balance=models.wallets.c.balance + wallet_transfer.value
+            )
+        )
+        await db.execute(models.transactions.insert(values={
+            'sender_wallet_id': wallet_id,
+            'recipient_wallet_id': recipient_wallet_id,
+            'value': wallet_transfer.value,
+            'timestamp': now
+        }))
+        new_balance = await db.fetch_val(
+            models.wallets.select(
+                models.wallets.c.id == wallet_id,
+            ).with_only_columns([
+                models.wallets.c.balance,
+            ])
+        )
+    return models.WalletBalance(
+        balance=new_balance,
+    )
+
+
 @app.on_event("startup")
 async def startup():
     await db.connect()
