@@ -8,7 +8,7 @@ from fastapi_users import models
 from fastapi_users.db import SQLAlchemyBaseUserTable
 from fastapi_users.db.sqlalchemy import GUID
 from pydantic import BaseModel, UUID4, validator
-from sqlalchemy import Column, DECIMAL, Integer, String, TIMESTAMP
+from sqlalchemy import Column, DECIMAL, Integer, String, TIMESTAMP, Index
 from sqlalchemy.ext.declarative import DeclarativeMeta, declarative_base
 
 import config
@@ -33,11 +33,17 @@ class WalletTable(Base):
 
 class TransactionTable(Base):
     __tablename__ = 'transaction'
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     sender_wallet_id = Column(GUID, nullable=True)
     recipient_wallet_id = Column(GUID)
     value = Column(DECIMAL)
     timestamp = Column(TIMESTAMP)
+
+    __table_args__ = (
+        Index('sender_wallet_id_timestamp_idx', 'sender_wallet_id', 'timestamp'),
+        Index('recipient_wallet_id_timestamp_idx', 'recipient_wallet_id', 'timestamp'),
+    )
 
 
 # Table instances
@@ -97,8 +103,9 @@ class WalletTransfer(WalletDeposit):
     pass
 
 
-class WalletBalance(BaseModel):
-    balance: decimal.Decimal
+class WalletValueBalance(BaseModel):
+    value: decimal.Decimal
+    balance: typing.Optional[decimal.Decimal]
 
 
 class WalletId(BaseModel):
