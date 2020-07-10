@@ -72,18 +72,17 @@ async def create_wallet(
     response_model=models.WalletList,
 )
 async def get_wallets(user: models.User = Depends(fastapi_users.get_current_user)):
-    async with db.transaction():
-        wallets = await db.fetch_all(
-            models.wallets.select(
-                models.wallets.c.user_id == user.id,
-            ).with_only_columns([
-                models.wallets.c.id,
-                models.wallets.c.name,
-            ])
-        )
-        return models.WalletList(
-            wallets=wallets
-        )
+    wallets = await db.fetch_all(
+        models.wallets.select(
+            models.wallets.c.user_id == user.id,
+        ).with_only_columns([
+            models.wallets.c.id,
+            models.wallets.c.name,
+        ])
+    )
+    return models.WalletList(
+        wallets=wallets
+    )
 
 
 @app.get(
@@ -96,22 +95,21 @@ async def get_wallet(
         wallet_id: uuid.UUID,
         user: models.User = Depends(fastapi_users.get_current_user),
 ):
-    async with db.transaction():
-        wallet = await db.fetch_one(
-            models.wallets.select(
-                and_(
-                    models.wallets.c.id == wallet_id,
-                    models.wallets.c.user_id == user.id
-                )
-            ).with_only_columns([
-                models.wallets.c.id,
-                models.wallets.c.name,
-                models.wallets.c.balance,
-            ])
-        )
-        if not wallet:
-            raise HTTPException(status_code=404, detail='Wallet does not exist or user does not own it')
-        return wallet
+    wallet = await db.fetch_one(
+        models.wallets.select(
+            and_(
+                models.wallets.c.id == wallet_id,
+                models.wallets.c.user_id == user.id
+            )
+        ).with_only_columns([
+            models.wallets.c.id,
+            models.wallets.c.name,
+            models.wallets.c.balance,
+        ])
+    )
+    if not wallet:
+        raise HTTPException(status_code=404, detail='Wallet does not exist or user does not own it')
+    return wallet
 
 
 @app.post(
