@@ -20,6 +20,7 @@ SELECT_FOR_UPDATE_STMT = compile_sql_statement(
     ).with_only_columns([
         models.wallets.c.id,
         models.wallets.c.user_id,
+        models.wallets.c.balance,
     ])
 )
 UPDATE_BALANCE_STMT = compile_sql_statement(
@@ -27,17 +28,20 @@ UPDATE_BALANCE_STMT = compile_sql_statement(
         models.wallets.c.id == WALLET_ID
     ).values(
         balance=models.wallets.c.balance + DEPOSIT_VALUE
-    )
+    ).returning(models.wallets.c.balance),
+    literal_binds=False
 )
 
 
 def make_insert_transaction_stmt():
     return compile_sql_statement(
         models.transactions.insert(values={
+            'sender_wallet_id': None,
             'recipient_wallet_id': WALLET_ID,
             'value': DEPOSIT_VALUE,
             'timestamp': datetime.datetime.utcnow()
-        })
+        }),
+        literal_binds=False
     )
 
 
@@ -53,9 +57,12 @@ def test_deposit__own_wallet__returns_value_and_new_balance(database, user, test
     assert database.fetch_one.mock.call_count == 1
     assert SELECT_FOR_UPDATE_STMT in fetch_one_sql_args
 
-    execute_sql_args = call_args_to_sql_strings(database.execute.mock.call_args_list)
-    assert database.execute.mock.call_count == 2
-    assert UPDATE_BALANCE_STMT in execute_sql_args
+    fetch_val_sql_args = call_args_to_sql_strings(database.fetch_val.mock.call_args_list, literal_binds=False)
+    assert database.fetch_val.mock.call_count == 1
+    assert UPDATE_BALANCE_STMT in fetch_val_sql_args
+
+    execute_sql_args = call_args_to_sql_strings(database.execute.mock.call_args_list, literal_binds=False)
+    assert database.execute.mock.call_count == 1
     assert make_insert_transaction_stmt() in execute_sql_args
 
     assert response.status_code == 200
@@ -77,9 +84,12 @@ def test_deposit__stranger_wallet__returns_value_only(database, user, test_app):
     assert database.fetch_one.mock.call_count == 1
     assert SELECT_FOR_UPDATE_STMT in fetch_one_sql_args
 
-    execute_sql_args = call_args_to_sql_strings(database.execute.mock.call_args_list)
-    assert database.execute.mock.call_count == 2
-    assert UPDATE_BALANCE_STMT in execute_sql_args
+    fetch_val_sql_args = call_args_to_sql_strings(database.fetch_val.mock.call_args_list, literal_binds=False)
+    assert database.fetch_val.mock.call_count == 1
+    assert UPDATE_BALANCE_STMT in fetch_val_sql_args
+
+    execute_sql_args = call_args_to_sql_strings(database.execute.mock.call_args_list, literal_binds=False)
+    assert database.execute.mock.call_count == 1
     assert make_insert_transaction_stmt() in execute_sql_args
 
     assert response.status_code == 200

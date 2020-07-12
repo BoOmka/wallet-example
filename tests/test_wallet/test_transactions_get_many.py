@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import and_, or_
 
 import models
-from models import Transaction
+from models import TransactionDB
 from tests.factories import make_wallet_json
 from tests.utils import async_mock, compile_sql_statement, get, call_args_to_sql_strings
 
@@ -23,8 +23,8 @@ COUNTERPARTY_WALLET_ID = str(uuid.uuid4())
                     'from_timestamp=2020-01-01%2000%3A00%3A01&to_timestamp=2020-01-01%2000%3A00%3A10',
                     and_(
                         or_(
-                            models.transactions.c.sender_wallet_id == WALLET_ID,
                             models.transactions.c.recipient_wallet_id == WALLET_ID,
+                            models.transactions.c.sender_wallet_id == WALLET_ID,
                         ),
                         models.transactions.c.timestamp >= datetime.datetime(2020, 1, 1, 0, 0, 1),
                         models.transactions.c.timestamp <= datetime.datetime(2020, 1, 1, 0, 0, 10),
@@ -57,8 +57,8 @@ COUNTERPARTY_WALLET_ID = str(uuid.uuid4())
                     'to_timestamp=2020-01-01%2000%3A00%3A01',
                     and_(
                         or_(
-                            models.transactions.c.sender_wallet_id == WALLET_ID,
                             models.transactions.c.recipient_wallet_id == WALLET_ID,
+                            models.transactions.c.sender_wallet_id == WALLET_ID,
                         ),
                         models.transactions.c.timestamp <= datetime.datetime(2020, 1, 1, 0, 0, 1),
                     )
@@ -68,21 +68,21 @@ COUNTERPARTY_WALLET_ID = str(uuid.uuid4())
 def test_get__wallet_exists_and_owned_args__returns_wallet_list(args, condition, database, user, test_app):
     wallet_data = make_wallet_json(wallet_id=WALLET_ID, user_id=user.id)
     transactions = [
-        Transaction(
+        TransactionDB(
             id=1,
             sender_wallet_id=None,
             recipient_wallet_id=WALLET_ID,
             value=decimal.Decimal(1),
             timestamp=datetime.datetime(2020, 1, 1, 0, 0, 1),
         ).dict(),
-        Transaction(
+        TransactionDB(
             id=2,
             sender_wallet_id=COUNTERPARTY_WALLET_ID,
             recipient_wallet_id=WALLET_ID,
             value=decimal.Decimal(2),
             timestamp=datetime.datetime(2020, 1, 1, 0, 0, 2),
         ).dict(),
-        Transaction(
+        TransactionDB(
             id=3,
             sender_wallet_id=WALLET_ID,
             recipient_wallet_id=COUNTERPARTY_WALLET_ID,
@@ -100,6 +100,7 @@ def test_get__wallet_exists_and_owned_args__returns_wallet_list(args, condition,
         models.transactions.select(
             condition
         ).with_only_columns([
+            models.transactions.c.id,
             models.transactions.c.sender_wallet_id,
             models.transactions.c.recipient_wallet_id,
             models.transactions.c.value,

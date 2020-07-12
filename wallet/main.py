@@ -1,30 +1,29 @@
 import asyncio
-import csv
 import datetime
-import decimal
 import typing as t
-import uuid
-from io import StringIO
 
-import asyncpg
 import databases
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.openapi.docs import get_swagger_ui_html
-from sqlalchemy import and_, or_
+from pydantic.types import UUID4
 from starlette.responses import RedirectResponse, StreamingResponse
 from starlette.staticfiles import StaticFiles
 
+import adapters
 import config
 import enums
 import models
 from auth import setup_auth
+from services import make_csv_stream, make_filename
 
 
 db = databases.Database(config.POSTGRES_DSN)
 
 app = FastAPI()
 fastapi_users = setup_auth(app, db)
+wallet_db_adapter = adapters.WalletDatabaseAdapter(models.WalletDB, db, models.wallets)
+transaction_db_adapter = adapters.TransactionDatabaseAdapter(models.TransactionDB, db, models.transactions)
 
 app.mount('/static', StaticFiles(directory='static'), name='static')
 
@@ -62,17 +61,11 @@ async def create_wallet(
         user: models.User = Depends(fastapi_users.get_current_user),
 ):
     try:
-        async with db.transaction():
-            wallet_id = await db.fetch_val(models.wallets.insert(values={
-                'id': uuid.uuid4(),
-                'user_id': user.id,
-                'name': wallet_create.name,
-                'balance': decimal.Decimal(0),
-            }).returning(models.wallets.c.id))
-    except asyncpg.UniqueViolationError:
+        new_wallet_id = await wallet_db_adapter.create(wallet_create, user.id)
+    except ValueError:
         raise HTTPException(status_code=409, detail='Wallet with this name already exists')
     return models.WalletId(
-        id=wallet_id,
+        id=new_wallet_id,
     )
 
 
@@ -82,14 +75,7 @@ async def create_wallet(
     response_model=models.WalletList,
 )
 async def get_wallets(user: models.User = Depends(fastapi_users.get_current_user)):
-    wallets = await db.fetch_all(
-        models.wallets.select(
-            models.wallets.c.user_id == user.id,
-        ).with_only_columns([
-            models.wallets.c.id,
-            models.wallets.c.name,
-        ])
-    )
+    wallets = await wallet_db_adapter.get_many(user_id=user.id)
     return models.WalletList(
         wallets=wallets
     )
@@ -105,22 +91,18 @@ async def get_wallets(user: models.User = Depends(fastapi_users.get_current_user
     },
 )
 async def get_wallet(
-        wallet_id: uuid.UUID,
+        wallet_id: UUID4,
         user: models.User = Depends(fastapi_users.get_current_user),
 ):
-    wallet = await db.fetch_one(
-        models.wallets.select(
-            models.wallets.c.id == wallet_id,
-        )
-    )
+    wallet = await wallet_db_adapter.get(wallet_id=wallet_id)
     if not wallet:
         raise HTTPException(
             status_code=404,
             detail=make_simple_error_message('Wallet does not exist', entity='wallet'),
         )
-    if wallet['user_id'] != user.id:
+    if wallet.user_id != user.id:
         raise HTTPException(status_code=403, detail=make_simple_error_message('User does not own the wallet'))
-    return models.Wallet(**wallet)
+    return wallet
 
 
 @app.post(
@@ -130,54 +112,33 @@ async def get_wallet(
     responses={404: {'model': models.ErrorDetails}},
 )
 async def deposit_to_wallet(
-        wallet_id: uuid.UUID,
+        wallet_id: UUID4,
         wallet_deposit: models.WalletDeposit,
         user: models.User = Depends(fastapi_users.get_current_user),
 ):
     now = datetime.datetime.utcnow()
     async with db.transaction():
-        wallet = await db.fetch_one(
-            models.wallets.select(
-                models.wallets.c.id == wallet_id,
-                for_update=True,
-            ).with_only_columns([
-                models.wallets.c.id,
-                models.wallets.c.user_id,
-            ])
-        )
+        wallet = await wallet_db_adapter.lock(wallet_id)
         if not wallet:
             raise HTTPException(
                 status_code=404,
                 detail=make_simple_error_message('Wallet does not exist', entity='wallet'),
             )
-        await db.execute(
-            models.wallets.update(
-                models.wallets.c.id == wallet_id
-            ).values(
-                balance=models.wallets.c.balance + wallet_deposit.value
-            )
+        new_balance = await wallet_db_adapter.increase_balance(wallet_id, wallet_deposit.value)
+        await transaction_db_adapter.create(models.TransactionDB(
+            recipient_wallet_id=wallet_id,
+            value=wallet_deposit.value,
+            timestamp=now,
+        ))
+    if wallet.user_id == user.id:
+        return models.WalletValueBalance(
+            value=wallet_deposit.value,
+            balance=new_balance,
         )
-        await db.execute(models.transactions.insert(values={
-            'recipient_wallet_id': wallet_id,
-            'value': wallet_deposit.value,
-            'timestamp': now
-        }))
-        if wallet['user_id'] == user.id:
-            new_balance = await db.fetch_val(
-                models.wallets.select(
-                    models.wallets.c.id == wallet_id,
-                ).with_only_columns([
-                    models.wallets.c.balance,
-                ])
-            )
-            return models.WalletValueBalance(
-                value=wallet_deposit.value,
-                balance=new_balance,
-            )
-        else:
-            return models.WalletValueBalance(
-                value=wallet_deposit.value,
-            )
+    else:
+        return models.WalletValueBalance(
+            value=wallet_deposit.value,
+        )
 
 
 @app.post(
@@ -191,79 +152,46 @@ async def deposit_to_wallet(
     },
 )
 async def transfer(
-        wallet_id: uuid.UUID,
-        recipient_wallet_id: uuid.UUID,
+        wallet_id: UUID4,
+        recipient_wallet_id: UUID4,
         wallet_transfer: models.WalletTransfer,
         user: models.User = Depends(fastapi_users.get_current_user),
 ):
     now = datetime.datetime.utcnow()
+    if wallet_id == recipient_wallet_id:
+        raise HTTPException(status_code=400, detail='Cannot transfer to self')
     async with db.transaction():
-        sender_wallet = await db.fetch_one(
-            models.wallets.select(
-                models.wallets.c.id == wallet_id,
-                for_update=True,
-            ).with_only_columns([
-                models.wallets.c.id,
-                models.wallets.c.user_id,
-                models.wallets.c.balance,
-            ])
+        sender_wallet, recipient_wallet = await asyncio.gather(
+            wallet_db_adapter.lock(wallet_id),
+            wallet_db_adapter.lock(recipient_wallet_id),
         )
         if not sender_wallet:
             raise HTTPException(
                 status_code=404,
                 detail=make_simple_error_message('Sender wallet does not exist', entity='sender_wallet'),
             )
-        if sender_wallet['user_id'] != user.id:
+        if sender_wallet.user_id != user.id:
             raise HTTPException(
                 status_code=403,
                 detail=make_simple_error_message('User does not own the sender wallet'),
             )
-        if sender_wallet['balance'] < wallet_transfer.value:
+        if sender_wallet.balance < wallet_transfer.value:
             raise HTTPException(status_code=400, detail=make_simple_error_message('Insufficient funds'))
-
-        recipient_wallet = await db.fetch_one(
-            models.wallets.select(
-                models.wallets.c.id == recipient_wallet_id,
-                for_update=True,
-            ).with_only_columns([
-                models.wallets.c.id,
-                models.wallets.c.balance,
-            ])
-        )
         if not recipient_wallet:
             raise HTTPException(
                 status_code=404,
                 detail=make_simple_error_message('Recipient wallet does not exist', entity='recipient_wallet'),
             )
 
-        await asyncio.gather(
-            db.execute(
-                models.wallets.update(
-                    models.wallets.c.id == wallet_id
-                ).values(
-                    balance=models.wallets.c.balance - wallet_transfer.value,
-                )
-            ),
-            db.execute(
-                models.wallets.update(
-                    models.wallets.c.id == recipient_wallet_id
-                ).values(
-                    balance=models.wallets.c.balance + wallet_transfer.value,
-                )
-            ),
-            db.execute(models.transactions.insert(values={
-                'sender_wallet_id': wallet_id,
-                'recipient_wallet_id': recipient_wallet_id,
-                'value': wallet_transfer.value,
-                'timestamp': now,
-            }))
-        )
-        new_balance = await db.fetch_val(
-            models.wallets.select(
-                models.wallets.c.id == wallet_id,
-            ).with_only_columns([
-                models.wallets.c.balance,
-            ])
+        new_balance, _, _ = await asyncio.gather(
+            wallet_db_adapter.decrease_balance(wallet_id, wallet_transfer.value),
+            wallet_db_adapter.increase_balance(recipient_wallet_id, wallet_transfer.value),
+            transaction_db_adapter.create(models.TransactionDB(
+                sender_wallet_id=wallet_id,
+                recipient_wallet_id=recipient_wallet_id,
+                value=wallet_transfer.value,
+                timestamp=now,
+            )),
         )
     return models.WalletValueBalance(
         value=wallet_transfer.value,
@@ -282,71 +210,30 @@ async def transfer(
     },
 )
 async def get_wallet_operations(
-        wallet_id: uuid.UUID,
+        wallet_id: UUID4,
         from_timestamp: datetime.datetime = None,
         to_timestamp: datetime.datetime = None,
         side: enums.TransferSide = None,
         user: models.User = Depends(fastapi_users.get_current_user),
 ):
-    wallet = await db.fetch_one(
-        models.wallets.select(
-            models.wallets.c.id == wallet_id,
-        ).with_only_columns([
-            models.wallets.c.id,
-            models.wallets.c.user_id,
-        ])
-    )
+    wallet = await wallet_db_adapter.get(wallet_id)
     if not wallet:
         raise HTTPException(
             status_code=404,
             detail=make_simple_error_message('Wallet does not exist', entity='wallet'),
         )
-    if wallet['user_id'] != user.id:
+    if wallet.user_id != user.id:
         raise HTTPException(status_code=403, detail=make_simple_error_message('User does not own the wallet'))
 
-    and_conditions = []
-    filename_suffixes = [str(wallet_id)]
-    if not side:
-        and_conditions.append(or_(
-            models.transactions.c.sender_wallet_id == wallet_id,
-            models.transactions.c.recipient_wallet_id == wallet_id,
-        ))
-        filename_suffixes.append('both')
-    elif side is enums.TransferSide.deposit:
-        and_conditions.append(models.transactions.c.recipient_wallet_id == wallet_id)
-        filename_suffixes.append(side.value)
-    elif side is enums.TransferSide.withdraw:
-        and_conditions.append(models.transactions.c.sender_wallet_id == wallet_id)
-        filename_suffixes.append(side.value)
-    if from_timestamp:
-        and_conditions.append(models.transactions.c.timestamp >= from_timestamp)
-        filename_suffixes.append('from' + str(from_timestamp).replace(' ', '_'))
-    if to_timestamp:
-        and_conditions.append(models.transactions.c.timestamp <= to_timestamp)
-        filename_suffixes.append('to' + str(to_timestamp).replace(' ', '_'))
-    transactions = await db.fetch_all(
-        models.transactions.select(and_(
-            *and_conditions
-        )).with_only_columns([
-            models.transactions.c.sender_wallet_id,
-            models.transactions.c.recipient_wallet_id,
-            models.transactions.c.value,
-            models.transactions.c.timestamp,
-        ]).order_by(models.transactions.c.timestamp)
+    transactions = await transaction_db_adapter.get_many(
+        wallet_id=wallet_id,
+        from_timestamp=from_timestamp,
+        to_timestamp=to_timestamp,
+        transfer_side=side,
     )
 
-    io = StringIO()
-    writer = csv.DictWriter(io, fieldnames=('id', 'sender_wallet_id', 'recipient_wallet_id', 'value', 'timestamp'))
-    writer.writeheader()
-    for transaction in transactions:
-        transaction = dict(transaction)
-        if not transaction['sender_wallet_id']:
-            transaction['sender_wallet_id'] = 'EXTERNAL_DEPOSIT'
-        writer.writerow(transaction)
-    io.seek(0)
-
-    filename_suffix = '-'.join(filename_suffixes)
-    filename = f'export-{filename_suffix}.csv'
+    io = make_csv_stream(transactions)
+    filename = make_filename(wallet_id, from_timestamp, to_timestamp, side)
 
     return StreamingResponse(
         io,
@@ -363,7 +250,7 @@ async def startup():  # pragma: no cover
 
 
 @app.on_event("shutdown")
-async def shutdown():   # pragma: no cover
+async def shutdown():  # pragma: no cover
     await db.disconnect()
 
 

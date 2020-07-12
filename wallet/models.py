@@ -1,6 +1,6 @@
 import datetime
 import decimal
-import typing
+import typing as t
 import uuid
 
 import sqlalchemy
@@ -59,7 +59,7 @@ class BaseModel(PydanticBaseModel):
 
 
 class ErrorDetails(BaseModel):
-    detail: typing.List[typing.Dict[str, typing.Any]]
+    detail: t.List[t.Dict[str, t.Any]]
 
 
 class User(models.BaseUser):
@@ -84,11 +84,11 @@ class Wallet(BaseModel):
     balance: decimal.Decimal
 
 
-class WalletDB(BaseModel):
-    id: UUID4
-    user_id: UUID4
-    name: str
-    balance: decimal.Decimal
+class WalletDB(Wallet):
+    id: t.Optional[UUID4]
+    user_id: t.Optional[UUID4]
+    name: t.Optional[str]
+    balance: t.Optional[decimal.Decimal]
 
 
 class WalletCreate(BaseModel):
@@ -117,7 +117,7 @@ class WalletTransfer(WalletDeposit):
 
 class WalletValueBalance(BaseModel):
     value: decimal.Decimal
-    balance: typing.Optional[decimal.Decimal]
+    balance: t.Optional[decimal.Decimal]
 
 
 class WalletId(BaseModel):
@@ -130,15 +130,15 @@ class WalletListItem(BaseModel):
 
 
 class WalletList(BaseModel):
-    wallets: typing.List[WalletListItem]
+    wallets: t.List[WalletListItem]
 
 
-class Transaction(BaseModel):
-    id: int
-    sender_wallet_id: typing.Optional[UUID4]
-    recipient_wallet_id: UUID4
-    value: decimal.Decimal
-    timestamp: datetime.datetime
+class TransactionDB(BaseModel):
+    id: t.Optional[int]
+    sender_wallet_id: t.Optional[t.Union[UUID4, str]]
+    recipient_wallet_id: t.Optional[UUID4]
+    value: t.Optional[decimal.Decimal]
+    timestamp: t.Optional[datetime.datetime]
 
 
 if __name__ == '__main__':  # pragma: no cover

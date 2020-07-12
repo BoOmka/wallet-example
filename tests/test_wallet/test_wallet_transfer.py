@@ -17,15 +17,15 @@ DECREMENT_SENDER_BALANCE_STMT = compile_sql_statement(
     models.wallets.update(
         models.wallets.c.id == SENDER_WALLET_ID
     ).values(
-        balance=models.wallets.c.balance - TRANSFER_VALUE,
-    )
+        balance=models.wallets.c.balance + (-TRANSFER_VALUE),
+    ).returning(models.wallets.c.balance)
 )
 INCREMENT_RECIPIENT_BALANCE_STMT = compile_sql_statement(
     models.wallets.update(
         models.wallets.c.id == RECIPIENT_WALLET_ID
     ).values(
         balance=models.wallets.c.balance + TRANSFER_VALUE,
-    )
+    ).returning(models.wallets.c.balance)
 )
 
 
@@ -57,10 +57,13 @@ def test__user_owns_sender_wallet_recipient_exists_sufficient_funds__returns_new
         json={'value': str(TRANSFER_VALUE)},
     )
 
+    fetch_val_sql_args = call_args_to_sql_strings(database.fetch_val.mock.call_args_list)
+    assert database.fetch_val.mock.call_count == 2
+    assert DECREMENT_SENDER_BALANCE_STMT in fetch_val_sql_args
+    assert INCREMENT_RECIPIENT_BALANCE_STMT in fetch_val_sql_args
+
     execute_sql_args = call_args_to_sql_strings(database.execute.mock.call_args_list)
-    assert database.execute.mock.call_count == 3
-    assert DECREMENT_SENDER_BALANCE_STMT in execute_sql_args
-    assert INCREMENT_RECIPIENT_BALANCE_STMT in execute_sql_args
+    assert database.execute.mock.call_count == 1
     assert make_insert_transaction_stmt() in execute_sql_args
 
     assert response.status_code == 200

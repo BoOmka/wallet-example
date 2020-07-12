@@ -31,9 +31,9 @@ def post(client, url, *args, **kwargs):
     return client.post(f'{url}{delimiter}args=a&kwargs=b', *args, **kwargs)
 
 
-def compile_sql_statement(sql_statement) -> str:
-    return str(sql_statement.compile(compile_kwargs={"literal_binds": True}))
+def compile_sql_statement(sql_statement, literal_binds=True) -> str:
+    return str(sql_statement.compile(compile_kwargs={"literal_binds": literal_binds}))
 
 
-def call_args_to_sql_strings(call_args_list: _CallList) -> t.List[str]:
-    return [compile_sql_statement(call.args[0]) for call in call_args_list]
+def call_args_to_sql_strings(call_args_list: _CallList, literal_binds=True) -> t.List[str]:
+    return [compile_sql_statement(call.args[0], literal_binds=literal_binds) for call in call_args_list]
