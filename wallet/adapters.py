@@ -52,13 +52,13 @@ class WalletDatabaseAdapter:
         return [self.db_model(**wallet_dict) for wallet_dict in wallet_dicts]
 
     async def lock(self, wallet_id: UUID4) -> t.Optional[models.WalletDB]:
-        query = self.table.select(for_update=True).where(
+        query = self.table.select().where(
             self.table.c.id == wallet_id,
         ).with_only_columns([
             self.table.c.id,
             self.table.c.user_id,
             self.table.c.balance,
-        ])
+        ]).with_for_update()
         wallet_dict = await self.database.fetch_one(query)
         return self.db_model(**wallet_dict) if wallet_dict else None
 

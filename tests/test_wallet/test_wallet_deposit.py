@@ -16,12 +16,11 @@ DEPOSIT_VALUE = decimal.Decimal('10.0001')
 SELECT_FOR_UPDATE_STMT = compile_sql_statement(
     tables.wallets.select(
         tables.wallets.c.id == WALLET_ID,
-        for_update=True,
     ).with_only_columns([
         tables.wallets.c.id,
         tables.wallets.c.user_id,
         tables.wallets.c.balance,
-    ])
+    ]).with_for_update()
 )
 UPDATE_BALANCE_STMT = compile_sql_statement(
     tables.wallets.update(
