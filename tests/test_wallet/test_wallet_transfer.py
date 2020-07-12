@@ -153,3 +153,23 @@ def test__recipient_does_not_exist__returns_error(database, user, test_app):
 
     assert response.status_code == 404
     assert response.json()['detail'][0]['entity'] == 'recipient_wallet'
+
+
+def test__recipient_is_sender__returns_error(database, user, test_app):
+    sender_wallet_data = make_wallet_json(wallet_id=SENDER_WALLET_ID, user_id=user.id, balance=decimal.Decimal(100))
+    recipient_wallet_data = sender_wallet_data
+
+    database.fetch_one = async_mock(side_effect=[
+        sender_wallet_data,
+        recipient_wallet_data,
+    ])
+    database.fetch_val = async_mock(return_value=decimal.Decimal(90))
+
+    response = post(
+        test_app,
+        f'/wallet/{SENDER_WALLET_ID}/transfer-to/{SENDER_WALLET_ID}',
+        json={'value': str(TRANSFER_VALUE)},
+    )
+
+    assert response.status_code == 400
+    assert response.json()['detail'][0]['msg'] == 'Cannot transfer to self'

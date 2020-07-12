@@ -159,7 +159,7 @@ async def transfer(
 ):
     now = datetime.datetime.utcnow()
     if wallet_id == recipient_wallet_id:
-        raise HTTPException(status_code=400, detail='Cannot transfer to self')
+        raise HTTPException(status_code=400, detail=make_simple_error_message('Cannot transfer to self'))
     async with db.transaction():
         sender_wallet, recipient_wallet = await asyncio.gather(
             wallet_db_adapter.lock(wallet_id),
