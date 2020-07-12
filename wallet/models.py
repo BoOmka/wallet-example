@@ -1,55 +1,9 @@
 import datetime
 import decimal
 import typing as t
-import uuid
 
-import sqlalchemy
 from fastapi_users import models
-from fastapi_users.db import SQLAlchemyBaseUserTable
-from fastapi_users.db.sqlalchemy import GUID
 from pydantic import BaseModel as PydanticBaseModel, UUID4, validator
-from sqlalchemy import Column, DECIMAL, Index, Integer, String, TIMESTAMP
-from sqlalchemy.ext.declarative import DeclarativeMeta, declarative_base
-
-import config
-
-
-Base: DeclarativeMeta = declarative_base()
-
-
-# Declarative tables
-class UserTable(Base, SQLAlchemyBaseUserTable):
-    pass
-
-
-class WalletTable(Base):
-    __tablename__ = 'wallet'
-
-    id = Column(GUID, primary_key=True, default=uuid.uuid4)
-    user_id = Column(GUID)
-    name = Column(String, unique=True)
-    balance = Column(DECIMAL)
-
-
-class TransactionTable(Base):
-    __tablename__ = 'transaction'
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    sender_wallet_id = Column(GUID, nullable=True)
-    recipient_wallet_id = Column(GUID)
-    value = Column(DECIMAL)
-    timestamp = Column(TIMESTAMP)
-
-    __table_args__ = (
-        Index('sender_wallet_id_timestamp_idx', 'sender_wallet_id', 'timestamp'),
-        Index('recipient_wallet_id_timestamp_idx', 'recipient_wallet_id', 'timestamp'),
-    )
-
-
-# Table instances
-users = UserTable.__table__
-wallets = WalletTable.__table__
-transactions = TransactionTable.__table__
 
 
 # Pydantic models
@@ -139,8 +93,3 @@ class TransactionDB(BaseModel):
     recipient_wallet_id: t.Optional[UUID4]
     value: t.Optional[decimal.Decimal]
     timestamp: t.Optional[datetime.datetime]
-
-
-if __name__ == '__main__':  # pragma: no cover
-    engine = sqlalchemy.create_engine(config.POSTGRES_DSN)
-    Base.metadata.create_all(engine)

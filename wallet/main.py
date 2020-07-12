@@ -14,6 +14,7 @@ import adapters
 import config
 import enums
 import models
+import tables
 from auth import setup_auth
 from services import make_csv_stream, make_filename
 
@@ -22,8 +23,8 @@ db = databases.Database(config.POSTGRES_DSN)
 
 app = FastAPI()
 fastapi_users = setup_auth(app, db)
-wallet_db_adapter = adapters.WalletDatabaseAdapter(models.WalletDB, db, models.wallets)
-transaction_db_adapter = adapters.TransactionDatabaseAdapter(models.TransactionDB, db, models.transactions)
+wallet_db_adapter = adapters.WalletDatabaseAdapter(models.WalletDB, db, tables.wallets)
+transaction_db_adapter = adapters.TransactionDatabaseAdapter(models.TransactionDB, db, tables.transactions)
 
 app.mount('/static', StaticFiles(directory='static'), name='static')
 

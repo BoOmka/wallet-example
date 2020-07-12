@@ -4,9 +4,9 @@ import uuid
 
 import freezegun
 
-import models
+import tables
 from tests.factories import make_wallet_json
-from tests.utils import async_mock, compile_sql_statement, post, call_args_to_sql_strings
+from tests.utils import async_mock, call_args_to_sql_strings, compile_sql_statement, post
 
 
 SENDER_WALLET_ID = str(uuid.uuid4())
@@ -14,24 +14,24 @@ RECIPIENT_WALLET_ID = str(uuid.uuid4())
 TRANSFER_VALUE = decimal.Decimal(10)
 
 DECREMENT_SENDER_BALANCE_STMT = compile_sql_statement(
-    models.wallets.update(
-        models.wallets.c.id == SENDER_WALLET_ID
+    tables.wallets.update(
+        tables.wallets.c.id == SENDER_WALLET_ID
     ).values(
-        balance=models.wallets.c.balance + (-TRANSFER_VALUE),
-    ).returning(models.wallets.c.balance)
+        balance=tables.wallets.c.balance + (-TRANSFER_VALUE),
+    ).returning(tables.wallets.c.balance)
 )
 INCREMENT_RECIPIENT_BALANCE_STMT = compile_sql_statement(
-    models.wallets.update(
-        models.wallets.c.id == RECIPIENT_WALLET_ID
+    tables.wallets.update(
+        tables.wallets.c.id == RECIPIENT_WALLET_ID
     ).values(
-        balance=models.wallets.c.balance + TRANSFER_VALUE,
-    ).returning(models.wallets.c.balance)
+        balance=tables.wallets.c.balance + TRANSFER_VALUE,
+    ).returning(tables.wallets.c.balance)
 )
 
 
 def make_insert_transaction_stmt():
     return compile_sql_statement(
-        models.transactions.insert(values={
+        tables.transactions.insert(values={
             'sender_wallet_id': SENDER_WALLET_ID,
             'recipient_wallet_id': RECIPIENT_WALLET_ID,
             'value': TRANSFER_VALUE,

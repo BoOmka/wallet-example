@@ -6,10 +6,10 @@ import uuid
 import pytest
 from sqlalchemy import and_, or_
 
-import models
+import tables
 from models import TransactionDB
 from tests.factories import make_wallet_json
-from tests.utils import async_mock, compile_sql_statement, get, call_args_to_sql_strings
+from tests.utils import async_mock, call_args_to_sql_strings, compile_sql_statement, get
 
 
 WALLET_ID = str(uuid.uuid4())
@@ -23,44 +23,44 @@ COUNTERPARTY_WALLET_ID = str(uuid.uuid4())
                     'from_timestamp=2020-01-01%2000%3A00%3A01&to_timestamp=2020-01-01%2000%3A00%3A10',
                     and_(
                         or_(
-                            models.transactions.c.recipient_wallet_id == WALLET_ID,
-                            models.transactions.c.sender_wallet_id == WALLET_ID,
+                            tables.transactions.c.recipient_wallet_id == WALLET_ID,
+                            tables.transactions.c.sender_wallet_id == WALLET_ID,
                         ),
-                        models.transactions.c.timestamp >= datetime.datetime(2020, 1, 1, 0, 0, 1),
-                        models.transactions.c.timestamp <= datetime.datetime(2020, 1, 1, 0, 0, 10),
+                        tables.transactions.c.timestamp >= datetime.datetime(2020, 1, 1, 0, 0, 1),
+                        tables.transactions.c.timestamp <= datetime.datetime(2020, 1, 1, 0, 0, 10),
                     ),
             ),
             (
                     'from_timestamp=2020-01-01%2000%3A00%3A01&to_timestamp=2020-01-01%2000%3A00%3A10&side=deposit',
                     and_(
-                        models.transactions.c.recipient_wallet_id == WALLET_ID,
-                        models.transactions.c.timestamp >= datetime.datetime(2020, 1, 1, 0, 0, 1),
-                        models.transactions.c.timestamp <= datetime.datetime(2020, 1, 1, 0, 0, 10),
+                        tables.transactions.c.recipient_wallet_id == WALLET_ID,
+                        tables.transactions.c.timestamp >= datetime.datetime(2020, 1, 1, 0, 0, 1),
+                        tables.transactions.c.timestamp <= datetime.datetime(2020, 1, 1, 0, 0, 10),
                     )
             ),
             (
                     'from_timestamp=2020-01-01%2000%3A00%3A01&to_timestamp=2020-01-01%2000%3A00%3A10&side=withdraw',
                     and_(
-                        models.transactions.c.sender_wallet_id == WALLET_ID,
-                        models.transactions.c.timestamp >= datetime.datetime(2020, 1, 1, 0, 0, 1),
-                        models.transactions.c.timestamp <= datetime.datetime(2020, 1, 1, 0, 0, 10),
+                        tables.transactions.c.sender_wallet_id == WALLET_ID,
+                        tables.transactions.c.timestamp >= datetime.datetime(2020, 1, 1, 0, 0, 1),
+                        tables.transactions.c.timestamp <= datetime.datetime(2020, 1, 1, 0, 0, 10),
                     )
             ),
             (
                     'from_timestamp=2020-01-01%2000%3A00%3A01&side=withdraw',
                     and_(
-                        models.transactions.c.sender_wallet_id == WALLET_ID,
-                        models.transactions.c.timestamp >= datetime.datetime(2020, 1, 1, 0, 0, 1),
+                        tables.transactions.c.sender_wallet_id == WALLET_ID,
+                        tables.transactions.c.timestamp >= datetime.datetime(2020, 1, 1, 0, 0, 1),
                     )
             ),
             (
                     'to_timestamp=2020-01-01%2000%3A00%3A01',
                     and_(
                         or_(
-                            models.transactions.c.recipient_wallet_id == WALLET_ID,
-                            models.transactions.c.sender_wallet_id == WALLET_ID,
+                            tables.transactions.c.recipient_wallet_id == WALLET_ID,
+                            tables.transactions.c.sender_wallet_id == WALLET_ID,
                         ),
-                        models.transactions.c.timestamp <= datetime.datetime(2020, 1, 1, 0, 0, 1),
+                        tables.transactions.c.timestamp <= datetime.datetime(2020, 1, 1, 0, 0, 1),
                     )
             ),
     )
@@ -97,15 +97,15 @@ def test_get__wallet_exists_and_owned_args__returns_wallet_list(args, condition,
     response = get(test_app, f'/wallet/{WALLET_ID}/operations?{args}')
 
     select_stmt = compile_sql_statement(
-        models.transactions.select(
+        tables.transactions.select(
             condition
         ).with_only_columns([
-            models.transactions.c.id,
-            models.transactions.c.sender_wallet_id,
-            models.transactions.c.recipient_wallet_id,
-            models.transactions.c.value,
-            models.transactions.c.timestamp,
-        ]).order_by(models.transactions.c.timestamp)
+            tables.transactions.c.id,
+            tables.transactions.c.sender_wallet_id,
+            tables.transactions.c.recipient_wallet_id,
+            tables.transactions.c.value,
+            tables.transactions.c.timestamp,
+        ]).order_by(tables.transactions.c.timestamp)
     )
 
     assert call_args_to_sql_strings(database.fetch_all.mock.call_args_list)[0] == select_stmt

@@ -5,7 +5,7 @@ import uuid
 import freezegun
 import pytest
 
-import models
+import tables
 from tests.factories import make_wallet_json
 from tests.utils import async_mock, call_args_to_sql_strings, compile_sql_statement, post
 
@@ -14,28 +14,28 @@ WALLET_ID = str(uuid.uuid4())
 DEPOSIT_VALUE = decimal.Decimal('10.0001')
 
 SELECT_FOR_UPDATE_STMT = compile_sql_statement(
-    models.wallets.select(
-        models.wallets.c.id == WALLET_ID,
+    tables.wallets.select(
+        tables.wallets.c.id == WALLET_ID,
         for_update=True,
     ).with_only_columns([
-        models.wallets.c.id,
-        models.wallets.c.user_id,
-        models.wallets.c.balance,
+        tables.wallets.c.id,
+        tables.wallets.c.user_id,
+        tables.wallets.c.balance,
     ])
 )
 UPDATE_BALANCE_STMT = compile_sql_statement(
-    models.wallets.update(
-        models.wallets.c.id == WALLET_ID
+    tables.wallets.update(
+        tables.wallets.c.id == WALLET_ID
     ).values(
-        balance=models.wallets.c.balance + DEPOSIT_VALUE
-    ).returning(models.wallets.c.balance),
+        balance=tables.wallets.c.balance + DEPOSIT_VALUE
+    ).returning(tables.wallets.c.balance),
     literal_binds=False
 )
 
 
 def make_insert_transaction_stmt():
     return compile_sql_statement(
-        models.transactions.insert(values={
+        tables.transactions.insert(values={
             'sender_wallet_id': None,
             'recipient_wallet_id': WALLET_ID,
             'value': DEPOSIT_VALUE,
