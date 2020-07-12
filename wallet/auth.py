@@ -12,7 +12,7 @@ import tables
 def setup_auth(app: FastAPI, database: databases.Database):
     user_db = SQLAlchemyUserDatabase(models.UserDB, database, tables.users)
     jwt_authentication = JWTAuthentication(
-        secret=config.JWT_SECRET, lifetime_seconds=3600, tokenUrl="/auth/jwt/login"
+        secret=config.JWT_SECRET, lifetime_seconds=config.JWT_LIFETIME, tokenUrl="/auth/jwt/login"
     )
     fastapi_users = FastAPIUsers(
         user_db, [jwt_authentication], models.User, models.UserCreate, models.UserUpdate, models.UserDB,

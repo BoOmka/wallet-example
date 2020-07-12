@@ -256,4 +256,4 @@ async def shutdown():  # pragma: no cover
 
 
 if __name__ == '__main__':  # pragma: no cover
-    uvicorn.run(app, host='0.0.0.0', port=8080)
+    uvicorn.run(app, host='0.0.0.0', port=config.APP_PORT)
