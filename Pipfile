@@ -4,6 +4,11 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [dev-packages]
+pytest = "*"
+pytest-postgresql = "*"
+pytest-mock = "*"
+pytest-freezegun = "*"
+requests = "==2.24.0"
 
 [packages]
 fastapi = "==0.58.1"

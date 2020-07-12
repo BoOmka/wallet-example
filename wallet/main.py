@@ -2,6 +2,7 @@ import asyncio
 import csv
 import datetime
 import decimal
+import typing as t
 import uuid
 from io import StringIO
 
@@ -25,11 +26,17 @@ db = databases.Database(config.POSTGRES_DSN)
 app = FastAPI()
 fastapi_users = setup_auth(app, db)
 
-app.mount('/static', StaticFiles(directory='./static'), name='static')
+app.mount('/static', StaticFiles(directory='static'), name='static')
+
+
+def make_simple_error_message(msg: str, **kwargs) -> t.List[t.Dict[str, t.Any]]:
+    kwargs = kwargs.copy()
+    kwargs['msg'] = msg
+    return [kwargs]
 
 
 @app.get('/docs', include_in_schema=False)
-async def custom_swagger_ui_html():
+async def custom_swagger_ui_html():  # pragma: no cover
     return get_swagger_ui_html(
         openapi_url=app.openapi_url,
         title=app.title + ' - Swagger UI',
@@ -40,12 +47,12 @@ async def custom_swagger_ui_html():
 
 
 @app.get('/', include_in_schema=False)
-async def root():
+async def root():  # pragma: no cover
     return RedirectResponse('/docs')
 
 
 @app.post(
-    '/wallet/create',
+    '/wallet',
     summary='Create wallet',
     response_model=models.WalletId,
     responses={409: {'model': models.ErrorDetails}},
@@ -107,9 +114,12 @@ async def get_wallet(
         )
     )
     if not wallet:
-        raise HTTPException(status_code=404, detail='Wallet does not exist')
+        raise HTTPException(
+            status_code=404,
+            detail=make_simple_error_message('Wallet does not exist', entity='wallet'),
+        )
     if wallet['user_id'] != user.id:
-        raise HTTPException(status_code=403, detail='User does not own the wallet')
+        raise HTTPException(status_code=403, detail=make_simple_error_message('User does not own the wallet'))
     return models.Wallet(**wallet)
 
 
@@ -136,7 +146,10 @@ async def deposit_to_wallet(
             ])
         )
         if not wallet:
-            raise HTTPException(status_code=404, detail='Wallet does not exist')
+            raise HTTPException(
+                status_code=404,
+                detail=make_simple_error_message('Wallet does not exist', entity='wallet'),
+            )
         await db.execute(
             models.wallets.update(
                 models.wallets.c.id == wallet_id
@@ -196,11 +209,17 @@ async def transfer(
             ])
         )
         if not sender_wallet:
-            raise HTTPException(status_code=404, detail='Sender wallet does not exist')
+            raise HTTPException(
+                status_code=404,
+                detail=make_simple_error_message('Sender wallet does not exist', entity='sender_wallet'),
+            )
         if sender_wallet['user_id'] != user.id:
-            raise HTTPException(status_code=403, detail='User does not own the sender wallet')
+            raise HTTPException(
+                status_code=403,
+                detail=make_simple_error_message('User does not own the sender wallet'),
+            )
         if sender_wallet['balance'] < wallet_transfer.value:
-            raise HTTPException(status_code=400, detail='Insufficient funds')
+            raise HTTPException(status_code=400, detail=make_simple_error_message('Insufficient funds'))
 
         recipient_wallet = await db.fetch_one(
             models.wallets.select(
@@ -212,7 +231,10 @@ async def transfer(
             ])
         )
         if not recipient_wallet:
-            raise HTTPException(status_code=404, detail='Recipient wallet does not exist')
+            raise HTTPException(
+                status_code=404,
+                detail=make_simple_error_message('Recipient wallet does not exist', entity='recipient_wallet'),
+            )
 
         await asyncio.gather(
             db.execute(
@@ -275,9 +297,12 @@ async def get_wallet_operations(
         ])
     )
     if not wallet:
-        raise HTTPException(status_code=404, detail='Wallet does not exist')
+        raise HTTPException(
+            status_code=404,
+            detail=make_simple_error_message('Wallet does not exist', entity='wallet'),
+        )
     if wallet['user_id'] != user.id:
-        raise HTTPException(status_code=403, detail='User does not own the wallet')
+        raise HTTPException(status_code=403, detail=make_simple_error_message('User does not own the wallet'))
 
     and_conditions = []
     filename_suffixes = [str(wallet_id)]
@@ -297,7 +322,7 @@ async def get_wallet_operations(
         and_conditions.append(models.transactions.c.timestamp >= from_timestamp)
         filename_suffixes.append('from' + str(from_timestamp).replace(' ', '_'))
     if to_timestamp:
-        and_conditions.append(models.transactions.c.timestamp >= to_timestamp)
+        and_conditions.append(models.transactions.c.timestamp <= to_timestamp)
         filename_suffixes.append('to' + str(to_timestamp).replace(' ', '_'))
     transactions = await db.fetch_all(
         models.transactions.select(and_(
@@ -311,7 +336,7 @@ async def get_wallet_operations(
     )
 
     io = StringIO()
-    writer = csv.DictWriter(io, fieldnames=('sender_wallet_id', 'recipient_wallet_id', 'value', 'timestamp'))
+    writer = csv.DictWriter(io, fieldnames=('id', 'sender_wallet_id', 'recipient_wallet_id', 'value', 'timestamp'))
     writer.writeheader()
     for transaction in transactions:
         transaction = dict(transaction)
@@ -332,16 +357,15 @@ async def get_wallet_operations(
     )
 
 
-
 @app.on_event("startup")
-async def startup():
+async def startup():  # pragma: no cover
     await db.connect()
 
 
 @app.on_event("shutdown")
-async def shutdown():
+async def shutdown():   # pragma: no cover
     await db.disconnect()
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
     uvicorn.run(app, host='0.0.0.0', port=8080)

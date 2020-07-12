@@ -7,8 +7,8 @@ import sqlalchemy
 from fastapi_users import models
 from fastapi_users.db import SQLAlchemyBaseUserTable
 from fastapi_users.db.sqlalchemy import GUID
-from pydantic import BaseModel, UUID4, validator
-from sqlalchemy import Column, DECIMAL, Integer, String, TIMESTAMP, Index
+from pydantic import BaseModel as PydanticBaseModel, UUID4, validator
+from sqlalchemy import Column, DECIMAL, Index, Integer, String, TIMESTAMP
 from sqlalchemy.ext.declarative import DeclarativeMeta, declarative_base
 
 import config
@@ -53,8 +53,13 @@ transactions = TransactionTable.__table__
 
 
 # Pydantic models
+class BaseModel(PydanticBaseModel):
+    class Config:
+        json_encoders = {decimal.Decimal: str}
+
+
 class ErrorDetails(BaseModel):
-    details: str
+    detail: typing.List[typing.Dict[str, typing.Any]]
 
 
 class User(models.BaseUser):
@@ -75,6 +80,13 @@ class UserDB(User, models.BaseUserDB):
 
 class Wallet(BaseModel):
     id: UUID4
+    name: str
+    balance: decimal.Decimal
+
+
+class WalletDB(BaseModel):
+    id: UUID4
+    user_id: UUID4
     name: str
     balance: decimal.Decimal
 
@@ -123,12 +135,12 @@ class WalletList(BaseModel):
 
 class Transaction(BaseModel):
     id: int
-    sender_wallet_id: int
-    recipient_wallet_id: int
+    sender_wallet_id: typing.Optional[UUID4]
+    recipient_wallet_id: UUID4
     value: decimal.Decimal
     timestamp: datetime.datetime
 
 
-if __name__ == '__main__':
-    engine = sqlalchemy.create_engine(config.POSTGRES_DSN, )
+if __name__ == '__main__':  # pragma: no cover
+    engine = sqlalchemy.create_engine(config.POSTGRES_DSN)
     Base.metadata.create_all(engine)
