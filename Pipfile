@@ -16,7 +16,7 @@ uvicorn = "==0.11.5"
 sqlalchemy = "==1.3.18"
 databases = {extras = ["postgresql"],version = "==0.3.2"}
 fastapi-users = {extras = ["sqlalchemy"],version = "==3.0.0"}
-pydantic = "==1.5.1"
+pydantic = "==1.6.2"
 python-decouple = "==3.3"
 aiofiles = "*"
 
